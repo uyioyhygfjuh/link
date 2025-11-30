@@ -1,0 +1,577 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import {
+  Shield, Youtube, BarChart3, AlertTriangle, CheckCircle, TrendingUp,
+  Zap, Bell, Eye, ArrowRight, Star, Search, Play, Clock,
+  Target, Award, Users, Check, X, Sparkles, Lock, Globe,
+  ChevronRight, MessageSquare, Boxes, Link2, ScanLine, BarChart
+} from 'lucide-react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+
+export default function LandingPage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [monthlyViews, setMonthlyViews] = useState('500000');
+  const [calculatedLoss, setCalculatedLoss] = useState(0);
+  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Calculate potential revenue loss
+  useEffect(() => {
+    const views = parseFloat(monthlyViews) || 0;
+    const loss = (views / 1000) * 4 * 0.15; // Assuming $4 CPM and 15% broken links
+    setCalculatedLoss(loss);
+  }, [monthlyViews]);
+
+  // Auto-rotate testimonials
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTestimonial((prev) => (prev + 1) % 3);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const features = [
+    {
+      icon: Shield,
+      title: "Automatic Link Monitoring",
+      description: "Continuously scan all your YouTube video descriptions for broken or outdated links 24/7.",
+      gradient: "from-blue-500 to-blue-600"
+    },
+    {
+      icon: Bell,
+      title: "Instant Notifications",
+      description: "Get real-time alerts when broken links are detected so you can fix them immediately.",
+      gradient: "from-blue-400 to-blue-500"
+    },
+    {
+      icon: BarChart3,
+      title: "Analytics Dashboard",
+      description: "Track link performance, click rates, and health status across all your videos.",
+      gradient: "from-blue-600 to-blue-700"
+    },
+    {
+      icon: Youtube,
+      title: "YouTube Integration",
+      description: "Seamlessly connect your YouTube channel and manage all your links in one place.",
+      gradient: "from-blue-500 to-blue-600"
+    },
+    {
+      icon: Clock,
+      title: "Historical Reports",
+      description: "Access detailed reports and track link health trends over time.",
+      gradient: "from-blue-400 to-blue-500"
+    },
+    {
+      icon: Zap,
+      title: "Lightning Fast Scans",
+      description: "Scan hundreds of videos in seconds with our optimized scanning engine.",
+      gradient: "from-blue-600 to-blue-700"
+    }
+  ];
+
+  const stats = [
+    { value: "10,000+", label: "Active Creators", icon: Users },
+    { value: "2M+", label: "Links Monitored", icon: Link2 },
+    { value: "99.9%", label: "Uptime", icon: TrendingUp },
+    { value: "24/7", label: "Support", icon: MessageSquare }
+  ];
+
+  const testimonials = [
+    {
+      name: "Sarah Johnson",
+      role: "Tech YouTuber • 500K Subscribers",
+      content: "LinkGuard saved me thousands in lost revenue. I had no idea how many broken affiliate links were costing me money!",
+      avatar: "SJ",
+      rating: 5
+    },
+    {
+      name: "Michael Chen",
+      role: "Gaming Creator • 1.2M Subscribers",
+      content: "The automated monitoring is a game-changer. I can focus on creating content while LinkGuard handles my link health.",
+      avatar: "MC",
+      rating: 5
+    },
+    {
+      name: "Emma Williams",
+      role: "Lifestyle Vlogger • 800K Subscribers",
+      content: "Best investment for my channel! The analytics dashboard helps me understand which links perform best.",
+      avatar: "EW",
+      rating: 5
+    }
+  ];
+
+  const pricingPlans = [
+    {
+      name: "Starter",
+      price: "29",
+      description: "Perfect for growing creators",
+      features: [
+        "Up to 50 videos monitored",
+        "Daily link scans",
+        "Email notifications",
+        "Basic analytics",
+        "7-day history"
+      ],
+      popular: false
+    },
+    {
+      name: "Professional",
+      price: "79",
+      description: "For established channels",
+      features: [
+        "Up to 500 videos monitored",
+        "Real-time link scans",
+        "Priority notifications",
+        "Advanced analytics",
+        "30-day history",
+        "API access"
+      ],
+      popular: true
+    },
+    {
+      name: "Enterprise",
+      price: "199",
+      description: "For large organizations",
+      features: [
+        "Unlimited videos",
+        "Instant scans",
+        "Multi-channel support",
+        "Custom analytics",
+        "Unlimited history",
+        "Dedicated support",
+        "White-label options"
+      ],
+      popular: false
+    }
+  ];
+
+  const faqs = [
+    {
+      question: "How does LinkGuard detect broken links?",
+      answer: "LinkGuard uses advanced algorithms to check every link in your video descriptions. We verify HTTP status codes, redirects, and page availability to ensure your links are working perfectly."
+    },
+    {
+      question: "How often are my links checked?",
+      answer: "Depending on your plan, links are checked daily, hourly, or in real-time. You'll receive instant notifications when issues are detected."
+    },
+    {
+      question: "Can I monitor multiple YouTube channels?",
+      answer: "Yes! Our Professional and Enterprise plans support monitoring multiple channels from a single dashboard."
+    },
+    {
+      question: "What types of links are monitored?",
+      answer: "We monitor all types of links including affiliate links, social media, websites, product pages, and any other URLs in your video descriptions."
+    },
+    {
+      question: "Is my YouTube data secure?",
+      answer: "Absolutely. We use enterprise-grade encryption and follow YouTube's API best practices. We only access the data necessary to monitor your links."
+    },
+    {
+      question: "Can I export my link reports?",
+      answer: "Yes! All plans include the ability to export detailed reports in PDF and Excel formats."
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-white via-blue-50/30 to-white">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-blue-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+                LinkGuard
+              </span>
+            </div>
+
+            <div className="hidden md:flex items-center space-x-8">
+              <a href="#features" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">Features</a>
+              <a href="#pricing" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">Pricing</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">Testimonials</a>
+              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-colors font-medium">FAQ</a>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              {loading ? (
+                <div className="w-20 h-10 bg-gray-200 rounded-lg animate-pulse"></div>
+              ) : user ? (
+                <Link
+                  href="/dashboard"
+                  className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/40 transform hover:scale-105 transition-all duration-300"
+                >
+                  Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="px-6 py-2.5 text-blue-600 hover:text-blue-700 font-semibold transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/40 transform hover:scale-105 transition-all duration-300"
+                  >
+                    Get Started
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="relative pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        {/* Decorative Elements */}
+        <div className="absolute top-20 right-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 left-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center">
+            {/* Badge */}
+            <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 px-4 py-2 rounded-full mb-8 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-700">Trusted by 10,000+ YouTube Creators</span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight">
+              <span className="block text-gray-900">Protect Your</span>
+              <span className="block bg-gradient-to-r from-blue-600 via-blue-500 to-blue-700 bg-clip-text text-transparent mt-2">
+                YouTube Revenue
+              </span>
+              <span className="block text-gray-900 mt-2">From Broken Links</span>
+            </h1>
+
+            {/* Subheadline */}
+            <p className="text-xl md:text-2xl text-gray-600 mb-10 max-w-3xl mx-auto leading-relaxed">
+              Automatically monitor, detect, and fix broken links in your YouTube videos before they cost you thousands in lost revenue
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-16">
+              <Link
+                href="/signup"
+                className="group w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transform hover:scale-105 transition-all duration-300 flex items-center justify-center space-x-2"
+              >
+                <span>Start Free Trial</span>
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <button className="group w-full sm:w-auto px-8 py-4 bg-white text-blue-600 border-2 border-blue-600 rounded-xl font-bold text-lg hover:bg-blue-50 transform hover:scale-105 transition-all duration-300 flex items-center justify-center space-x-2">
+                <Play className="w-5 h-5" />
+                <span>Watch Demo</span>
+              </button>
+            </div>
+
+            {/* Trust Indicators */}
+            <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-gray-600">
+              <div className="flex items-center space-x-2">
+                <Check className="w-5 h-5 text-blue-600" />
+                <span>No credit card required</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Check className="w-5 h-5 text-blue-600" />
+                <span>14-day free trial</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Check className="w-5 h-5 text-blue-600" />
+                <span>Cancel anytime</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Hero Image/Dashboard Preview */}
+          <div className="mt-20 relative">
+            <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent z-10"></div>
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-blue-100 bg-white">
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 h-12 flex items-center px-6 space-x-2">
+                <div className="w-3 h-3 rounded-full bg-blue-300"></div>
+                <div className="w-3 h-3 rounded-full bg-blue-300"></div>
+                <div className="w-3 h-3 rounded-full bg-blue-300"></div>
+              </div>
+              <div className="p-8 bg-gradient-to-br from-blue-50/50 to-white">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-gray-600 font-medium">Total Links</span>
+                      <Link2 className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="text-3xl font-bold text-gray-900">2,847</div>
+                    <div className="text-sm text-blue-600 mt-2">↑ 12% from last month</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-gray-600 font-medium">Healthy Links</span>
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="text-3xl font-bold text-gray-900">2,789</div>
+                    <div className="text-sm text-blue-600 mt-2">98% success rate</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-gray-600 font-medium">Issues Found</span>
+                      <AlertTriangle className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="text-3xl font-bold text-gray-900">58</div>
+                    <div className="text-sm text-blue-600 mt-2">Action required</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-100">
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="text-lg font-semibold text-gray-900">Link Health Overview</span>
+                    <BarChart className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="space-y-4">
+                    {[85, 65, 90, 75].map((width, i) => (
+                      <div key={i} className="flex items-center space-x-4">
+                        <div className="w-24 text-sm text-gray-600">Video {i + 1}</div>
+                        <div className="flex-1 bg-blue-100 rounded-full h-3">
+                          <div
+                            className="bg-gradient-to-r from-blue-600 to-blue-500 h-3 rounded-full transition-all duration-1000"
+                            style={{width: `${width}%`}}
+                          ></div>
+                        </div>
+                        <div className="w-12 text-sm text-gray-600">{width}%</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-600 to-blue-700">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {stats.map((stat, index) => (
+              <div key={index} className="text-center group">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <stat.icon className="w-8 h-8 text-white" />
+                </div>
+                <div className="text-4xl md:text-5xl font-black text-white mb-2">{stat.value}</div>
+                <div className="text-blue-100 font-medium">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-24 px-4 sm:px-6 lg:px-8 relative">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl"></div>
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 px-4 py-2 rounded-full mb-6">
+              <Boxes className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-700">POWERFUL FEATURES</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-6">
+              Everything You Need to
+              <span className="block bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent mt-2">
+                Protect Your Links
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Comprehensive tools designed to keep your YouTube channel's links healthy and your revenue flowing
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                className="group bg-white rounded-2xl p-8 shadow-sm border border-blue-100 hover:shadow-2xl hover:shadow-blue-500/20 hover:border-blue-300 transition-all duration-300 hover:-translate-y-2"
+              >
+                <div className={`inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r ${feature.gradient} rounded-2xl mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-500/30`}>
+                  <feature.icon className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-4">{feature.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Revenue Calculator Section */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 to-white relative overflow-hidden">
+        <div className="absolute top-20 right-20 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 left-20 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl"></div>
+
+        <div className="max-w-5xl mx-auto relative z-10">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 px-4 py-2 rounded-full mb-6">
+              <Target className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-700">REVENUE CALCULATOR</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-6">
+              How Much Are Broken Links
+              <span className="block bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent mt-2">
+                Costing You?
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600">
+              Calculate your potential monthly revenue loss from broken affiliate and sponsored links
+            </p>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-2xl border border-blue-100 p-8 md:p-12">
+            <div className="space-y-8">
+              <div>
+                <label className="block text-lg font-semibold text-gray-900 mb-4">
+                  Monthly Video Views
+                </label>
+                <input
+                  type="range"
+                  min="10000"
+                  max="10000000"
+                  step="10000"
+                  value={monthlyViews}
+                  onChange={(e) => setMonthlyViews(e.target.value)}
+                  className="w-full h-3 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <div className="flex justify-between items-center mt-4">
+                  <span className="text-sm text-gray-600">10K</span>
+                  <span className="text-3xl font-black text-blue-600">
+                    {parseInt(monthlyViews).toLocaleString()}
+                  </span>
+                  <span className="text-sm text-gray-600">10M</span>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-2xl p-8 border-2 border-blue-200">
+                <div className="text-center">
+                  <div className="text-sm font-semibold text-blue-700 mb-2">ESTIMATED MONTHLY LOSS</div>
+                  <div className="text-5xl md:text-6xl font-black text-gray-900 mb-2">
+                    ${calculatedLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-lg text-gray-600 mb-6">
+                    That's ${(calculatedLoss * 12).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per year!
+                  </div>
+                  <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
+                    <AlertTriangle className="w-4 h-4 text-blue-600" />
+                    <span>Assumes $4 CPM and 15% broken links</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-center">
+                <Link
+                  href="/signup"
+                  className="inline-flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transform hover:scale-105 transition-all duration-300"
+                >
+                  <span>Stop Losing Money Today</span>
+                  <ChevronRight className="w-5 h-5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 px-4 py-2 rounded-full mb-6">
+              <ScanLine className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-700">HOW IT WORKS</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-6">
+              Get Started in
+              <span className="block bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent mt-2">
+                3 Simple Steps
+              </span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 relative">
+            {/* Connection Line */}
+            <div className="hidden md:block absolute top-24 left-1/4 right-1/4 h-1 bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200"></div>
+
+            {[
+              {
+                step: "1",
+                title: "Connect Your Channel",
+                description: "Securely link your YouTube channel in just one click. We use official YouTube APIs to ensure your data is safe.",
+                icon: Youtube
+              },
+              {
+                step: "2",
+                title: "Scan Your Videos",
+                description: "Our AI-powered engine automatically scans all your video descriptions and identifies every link.",
+                icon: Search
+              },
+              {
+                step: "3",
+                title: "Monitor & Fix",
+                description: "Get instant alerts when issues are detected and use our dashboard to quickly fix broken links.",
+                icon: CheckCircle
+              }
+            ].map((item, index) => (
+              <div key={index} className="relative">
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-blue-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
+                    <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/50">
+                      {item.step}
+                    </div>
+                  </div>
+                  <div className="mt-8 text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-6">
+                      <item.icon className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-4">{item.title}</h3>
+                    <p className="text-gray-600 leading-relaxed">{item.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section id="testimonials" className="py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 to-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center space-x-2 bg-blue-100 px-4 py-2 rounded-full mb-6">
+              <Star className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-700">TESTIMONIALS</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-6">
+              Loved by
+              <span className="block bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent mt-2">
+                YouTube Creators
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600">
+              See what professional creators are saying about LinkGuard
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {testimonials.map((testimonial, index) => (
+              <div
+                key={index}
+                className={`bg-white rounded-2xl p-8 shadow-sm border-2 transition-all duration-500 ${
