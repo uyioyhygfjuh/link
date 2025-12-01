@@ -41,7 +41,7 @@ interface AutoScanSettings {
 }
 
 const DEFAULT_PLAN_CONFIG: PlanAutoScanConfig = {
-  maxVideosPerScan: 50,
+  maxVideosPerScan: 100, // Default to 100 (should match API default)
   maxChannels: 1,
   maxScansPerChannel: 10,
   allowedFrequencies: ["weekly"],
@@ -108,7 +108,7 @@ export default function AutoScanSettingsPage() {
       if (!prev.enabledPlans.includes(planId) && !newLimits[planId]) {
         const plan = plans.find(p => p.id === planId);
         newLimits[planId] = {
-          maxVideosPerScan: plan?.maxVideosPerScan || 50,
+          maxVideosPerScan: plan?.maxVideosPerScan || 100, // Default to 100, not 50
           maxChannels: 5,
           maxScansPerChannel: 100,
           allowedFrequencies: ["daily", "weekly", "monthly"],
@@ -224,7 +224,7 @@ export default function AutoScanSettingsPage() {
             const isEnabled = settings.enabledPlans.includes(plan.id);
             const config = settings.planLimits[plan.id] || DEFAULT_PLAN_CONFIG;
             const PlanIcon = getPlanIcon(plan.id);
-            const planVideoLimit = plan.maxVideosPerScan || 50;
+            const planVideoLimit = plan.maxVideosPerScan || 100;
 
             return (
               <div
@@ -288,7 +288,7 @@ export default function AutoScanSettingsPage() {
                             if (val === "unlimited") {
                               updatePlanConfig(plan.id, "maxVideosPerScan", "unlimited");
                             } else {
-                              updatePlanConfig(plan.id, "maxVideosPerScan", parseInt(e.target.value) || 50);
+                              updatePlanConfig(plan.id, "maxVideosPerScan", parseInt(e.target.value) || 100);
                             }
                           }}
                           className="w-full px-4 py-2.5 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"

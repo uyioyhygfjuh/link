@@ -1117,7 +1117,7 @@ export default function AutoScanUsersPage() {
                                 <p className="text-xs text-gray-500">
                                   {user.planLimits?.maxVideosPerScan === 'unlimited' 
                                     ? 'Unlimited' 
-                                    : `${user.planLimits?.maxVideosPerScan || channel.autoScanVideos || 50} videos`}
+                                    : `${user.planLimits?.maxVideosPerScan || channel.autoScanVideos || 100} videos`}
                                 </p>
                               </div>
                             </div>

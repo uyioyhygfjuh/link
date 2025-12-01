@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { applyPlanIfTrialEnded, getPlanPolicyFromFirestore } from '@/lib/plans';
-
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+import { 
+  youtubeApiManager, 
+  getVideoDetails as getVideoDetailsFromApi,
+  getVideosDetails,
+  YOUTUBE_API_BASE 
+} from '@/lib/youtube-api-manager';
 
 interface VideoLink {
   url: string;
@@ -162,9 +165,10 @@ async function checkLinkStatus(url: string, retryCount = 0): Promise<VideoLink> 
 // Get channel's uploads playlist ID
 async function getUploadsPlaylistId(channelId: string): Promise<string | null> {
   try {
-    const url = `${YOUTUBE_API_BASE}/channels?part=contentDetails&id=${channelId}&key=${YOUTUBE_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await youtubeApiManager.makeRequest<any>('channels', {
+      part: 'contentDetails',
+      id: channelId,
+    });
 
     if (data.items && data.items.length > 0) {
       return data.items[0].contentDetails.relatedPlaylists.uploads;
@@ -206,18 +210,21 @@ async function fetchChannelVideos(
     while (allVideos.length < maxResults) {
       pageCount++;
       const resultsToFetch = Math.min(videosPerPage, maxResults - allVideos.length);
-      const pageToken = nextPageToken ? `&pageToken=${nextPageToken}` : '';
-      
-      const playlistUrl: string = `${YOUTUBE_API_BASE}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${resultsToFetch}${pageToken}&key=${YOUTUBE_API_KEY}`;
       
       console.log(`  📄 Fetching page ${pageCount} (${resultsToFetch} videos)...`);
-      const response = await fetch(playlistUrl);
       
-      if (!response.ok) {
-        throw new Error(`YouTube API error: ${response.status}`);
+      // Use API manager with automatic key rotation
+      const params: Record<string, string> = {
+        part: 'snippet',
+        playlistId: uploadsPlaylistId,
+        maxResults: String(resultsToFetch),
+      };
+      
+      if (nextPageToken) {
+        params.pageToken = nextPageToken;
       }
-
-      const data = await response.json();
+      
+      const data = await youtubeApiManager.makeRequest<any>('playlistItems', params);
       
       if (!data.items || data.items.length === 0) {
         console.log('  ✓ No more videos available');
@@ -260,18 +267,10 @@ async function fetchChannelVideos(
   }
 }
 
-// Get video details including description
+// Get video details including description (uses API manager with key rotation)
 async function getVideoDetails(videoId: string): Promise<any> {
   try {
-    const url = `${YOUTUBE_API_BASE}/videos?key=${YOUTUBE_API_KEY}&id=${videoId}&part=snippet,contentDetails,statistics`;
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.items?.[0] || null;
+    return await getVideoDetailsFromApi(videoId);
   } catch (error) {
     console.error('Error fetching video details:', error);
     return null;

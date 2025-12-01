@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+import { getVideoDetails as getVideoDetailsFromApi } from '@/lib/youtube-api-manager';
 
 interface VideoLink {
   url: string;
@@ -83,18 +81,10 @@ async function checkLinkStatus(url: string): Promise<VideoLink> {
   }
 }
 
-// Get video details including description
+// Get video details including description (uses API manager with key rotation)
 async function getVideoDetails(videoId: string): Promise<any> {
   try {
-    const url = `${YOUTUBE_API_BASE}/videos?key=${YOUTUBE_API_KEY}&id=${videoId}&part=snippet,contentDetails,statistics`;
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.items?.[0] || null;
+    return await getVideoDetailsFromApi(videoId);
   } catch (error) {
     console.error('Error fetching video details:', error);
     return null;

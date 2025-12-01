@@ -28,8 +28,9 @@ const DEFAULT_AUTO_SCAN_SETTINGS = {
 };
 
 // Default plan config for plans not explicitly configured
+// NOTE: This is only used as fallback when plan-specific settings don't exist in Firestore
 const DEFAULT_PLAN_CONFIG = {
-  maxVideosPerScan: 50,
+  maxVideosPerScan: 100, // Default to 100 instead of 50
   maxChannels: 1,
   maxScansPerChannel: 10,
   allowedFrequencies: ["weekly"],
@@ -71,6 +72,12 @@ async function getUserPlanLimits(userId: string) {
   
   // Get plan-specific limits
   const planLimits = settings.planLimits?.[planId] || DEFAULT_PLAN_CONFIG;
+  
+  console.log(`📋 Plan limits for user ${userId} (${planId}):`, {
+    maxVideosPerScan: planLimits.maxVideosPerScan,
+    maxChannels: planLimits.maxChannels,
+    source: settings.planLimits?.[planId] ? 'firestore' : 'default'
+  });
   
   return { allowed: true, limits: planLimits, planId, error: null };
 }
@@ -186,7 +193,7 @@ export async function GET(request: NextRequest) {
             autoScanFrequency: ch.autoScanFrequency || "weekly",
             lastAutoScan: ch.lastAutoScan || null,
             nextAutoScan: getNextScanTime(ch),
-            autoScanVideos: ch.autoScanVideos || 50,
+            autoScanVideos: ch.autoScanVideos || 100,
           })),
         };
       });
@@ -285,7 +292,7 @@ export async function GET(request: NextRequest) {
             userId: data.userId,
             scanStartedAt: data.scanStartedAt,
             scanProgress: data.scanProgress || 0,
-            videosToScan: data.videosBeingScanned || data.autoScanVideos || 50,
+            videosToScan: data.videosBeingScanned || data.autoScanVideos || 100,
           });
         }
       });
@@ -394,9 +401,17 @@ export async function POST(request: NextRequest) {
             
             const updateData: any = { autoScanEnabled: enabled };
             
-            // Set default frequency based on plan if enabling
-            if (enabled && planLimits?.allowedFrequencies?.length > 0) {
-              updateData.autoScanFrequency = channelData.autoScanFrequency || planLimits.allowedFrequencies[0];
+            // Set default frequency and video count based on plan if enabling
+            if (enabled && planLimits) {
+              if (planLimits.allowedFrequencies?.length > 0) {
+                updateData.autoScanFrequency = channelData.autoScanFrequency || planLimits.allowedFrequencies[0];
+              }
+              // Set autoScanVideos to plan's maxVideosPerScan if not already set
+              if (!channelData.autoScanVideos) {
+                updateData.autoScanVideos = planLimits.maxVideosPerScan === "unlimited" 
+                  ? 1000 
+                  : planLimits.maxVideosPerScan;
+              }
             }
             
             batch.update(channelDoc.ref, updateData);
@@ -411,9 +426,17 @@ export async function POST(request: NextRequest) {
           
           const updateData: any = { autoScanEnabled: enabled };
           
-          // Set default frequency based on plan if enabling
-          if (enabled && planLimits?.allowedFrequencies?.length > 0) {
-            updateData.autoScanFrequency = channelData.autoScanFrequency || planLimits.allowedFrequencies[0];
+          // Set default frequency and video count based on plan if enabling
+          if (enabled && planLimits) {
+            if (planLimits.allowedFrequencies?.length > 0) {
+              updateData.autoScanFrequency = channelData.autoScanFrequency || planLimits.allowedFrequencies[0];
+            }
+            // Set autoScanVideos to plan's maxVideosPerScan if not already set
+            if (!channelData.autoScanVideos) {
+              updateData.autoScanVideos = planLimits.maxVideosPerScan === "unlimited" 
+                ? 1000 
+                : planLimits.maxVideosPerScan;
+            }
           }
           
           batch.update(channelDoc.ref, updateData);
@@ -453,12 +476,29 @@ export async function POST(request: NextRequest) {
       let totalUpdated = 0;
 
       for (const userId of userIds) {
+        // Get plan limits for this user
+        const { limits } = await getUserPlanLimits(userId);
+        
         const channelsRef = collection(db, "channels");
         const userChannelsQuery = query(channelsRef, where("userId", "==", userId));
         const channelsSnapshot = await getDocs(userChannelsQuery);
 
         channelsSnapshot.forEach((channelDoc) => {
-          batch.update(channelDoc.ref, { autoScanEnabled: enabled });
+          const channelData = channelDoc.data();
+          const updateData: any = { autoScanEnabled: enabled };
+          
+          // Set video count based on plan if enabling and not already set
+          if (enabled && limits && !channelData.autoScanVideos) {
+            updateData.autoScanVideos = limits.maxVideosPerScan === "unlimited" 
+              ? 1000 
+              : limits.maxVideosPerScan;
+            
+            if (limits.allowedFrequencies?.length > 0) {
+              updateData.autoScanFrequency = channelData.autoScanFrequency || limits.allowedFrequencies[0];
+            }
+          }
+          
+          batch.update(channelDoc.ref, updateData);
           totalUpdated++;
         });
       }
@@ -589,16 +629,28 @@ export async function POST(request: NextRequest) {
           }
 
           const channelData = channelDoc.data();
-          let videosToScan = channelData.autoScanVideos || 50;
           const channelName = channelData.channelName || channelData.name || "Unknown Channel";
 
-          // Enforce plan limits on video count
+          // Get plan limits to determine video count
+          let videosToScan = channelData.autoScanVideos || 100;
           if (channelData.userId) {
             const { limits } = await getUserPlanLimits(channelData.userId);
-            if (limits && limits.maxVideosPerScan !== "unlimited") {
-              videosToScan = Math.min(videosToScan, limits.maxVideosPerScan as number);
+            if (limits) {
+              // Use plan's maxVideosPerScan if channel doesn't have a specific setting
+              // or if the channel setting exceeds the plan limit
+              if (limits.maxVideosPerScan === "unlimited") {
+                videosToScan = channelData.autoScanVideos || 1000; // Default to 1000 for unlimited
+              } else {
+                // Use the plan's limit as the default, or channel's setting if lower
+                const planLimit = limits.maxVideosPerScan as number;
+                videosToScan = channelData.autoScanVideos 
+                  ? Math.min(channelData.autoScanVideos, planLimit)
+                  : planLimit; // Use plan limit as default instead of 50
+              }
             }
           }
+          
+          console.log(`📊 Video count for ${channelName}: ${videosToScan} (channel setting: ${channelData.autoScanVideos || 'not set'})`)
 
           // Mark channel as scanning (persisted in DB for session recovery)
           await updateDoc(channelRef, {
@@ -741,19 +793,29 @@ export async function POST(request: NextRequest) {
         }
 
         const channelData = channelDoc.data();
-        let videosToScan = channelData.autoScanVideos || 50;
-
         const channelName = channelData.channelName || channelData.name || "Unknown Channel";
         
-        // Enforce plan limits on video count
+        // Get plan limits to determine video count
+        let videosToScan = channelData.autoScanVideos || 100;
         if (channelData.userId) {
           const { limits } = await getUserPlanLimits(channelData.userId);
-          if (limits && limits.maxVideosPerScan !== "unlimited") {
-            videosToScan = Math.min(videosToScan, limits.maxVideosPerScan as number);
-            console.log(`📋 Plan limit enforced: max ${limits.maxVideosPerScan} videos per scan`);
+          if (limits) {
+            // Use plan's maxVideosPerScan if channel doesn't have a specific setting
+            if (limits.maxVideosPerScan === "unlimited") {
+              videosToScan = channelData.autoScanVideos || 1000; // Default to 1000 for unlimited
+              console.log(`📋 Plan has unlimited videos per scan`);
+            } else {
+              // Use the plan's limit as the default, or channel's setting if lower
+              const planLimit = limits.maxVideosPerScan as number;
+              videosToScan = channelData.autoScanVideos 
+                ? Math.min(channelData.autoScanVideos, planLimit)
+                : planLimit; // Use plan limit as default instead of 50
+              console.log(`📋 Plan limit: ${planLimit} videos per scan`);
+            }
           }
         }
         
+        console.log(`📊 Video count for ${channelName}: ${videosToScan} (channel setting: ${channelData.autoScanVideos || 'not set'})`)
         console.log(`🔄 Starting auto-scan for channel: ${channelName}`);
         console.log(`   - Firestore Doc ID: ${docId}`);
         console.log(`   - YouTube Channel ID: ${channelData.channelId}`);

@@ -1,6 +1,4 @@
 "use client";
-
-import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -9,7 +7,7 @@ import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'fire
 import Header from '@/components/Header';
 import { Shield, ArrowRight, CreditCard } from 'lucide-react';
 
-function PaymentContent() {
+export default function PaymentPage() {
   const router = useRouter();
   const params = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
@@ -209,17 +207,5 @@ function PaymentContent() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function PaymentPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      <PaymentContent />
-    </Suspense>
   );
 }

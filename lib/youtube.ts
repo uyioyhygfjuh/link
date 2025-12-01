@@ -1,5 +1,4 @@
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+import { youtubeApiManager, YOUTUBE_API_BASE } from './youtube-api-manager';
 
 export interface YouTubeChannel {
   id: string;
@@ -54,12 +53,13 @@ export function extractChannelId(input: string): string | null {
   return input;
 }
 
-// Get channel details by ID
+// Get channel details by ID (uses API manager with key rotation)
 export async function getChannelById(channelId: string): Promise<YouTubeChannel | null> {
   try {
-    const url = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await youtubeApiManager.makeRequest<any>('channels', {
+      part: 'snippet,statistics',
+      id: channelId,
+    });
 
     if (data.items && data.items.length > 0) {
       const channel = data.items[0];
@@ -82,13 +82,14 @@ export async function getChannelById(channelId: string): Promise<YouTubeChannel 
   }
 }
 
-// Search for channel by username or custom URL
+// Search for channel by username or custom URL (uses API manager with key rotation)
 export async function searchChannel(query: string): Promise<YouTubeChannel | null> {
   try {
     // First try to get by username/forUsername
-    const forUsernameUrl = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics&forUsername=${query}&key=${YOUTUBE_API_KEY}`;
-    const forUsernameResponse = await fetch(forUsernameUrl);
-    const forUsernameData = await forUsernameResponse.json();
+    const forUsernameData = await youtubeApiManager.makeRequest<any>('channels', {
+      part: 'snippet,statistics',
+      forUsername: query,
+    });
 
     if (forUsernameData.items && forUsernameData.items.length > 0) {
       const channel = forUsernameData.items[0];
@@ -105,9 +106,11 @@ export async function searchChannel(query: string): Promise<YouTubeChannel | nul
     }
 
     // If not found, try search
-    const searchUrl = `${YOUTUBE_API_BASE}/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}`;
-    const searchResponse = await fetch(searchUrl);
-    const searchData = await searchResponse.json();
+    const searchData = await youtubeApiManager.makeRequest<any>('search', {
+      part: 'snippet',
+      type: 'channel',
+      q: query,
+    });
 
     if (searchData.items && searchData.items.length > 0) {
       const channelId = searchData.items[0].id.channelId;
@@ -121,12 +124,16 @@ export async function searchChannel(query: string): Promise<YouTubeChannel | nul
   }
 }
 
-// Get channel videos
+// Get channel videos (uses API manager with key rotation)
 export async function getChannelVideos(channelId: string, maxResults: number = 50): Promise<YouTubeVideo[]> {
   try {
-    const url = `${YOUTUBE_API_BASE}/search?part=snippet&channelId=${channelId}&type=video&order=date&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await youtubeApiManager.makeRequest<any>('search', {
+      part: 'snippet',
+      channelId: channelId,
+      type: 'video',
+      order: 'date',
+      maxResults: String(maxResults),
+    });
 
     if (data.items) {
       return data.items.map((item: any) => ({
@@ -145,12 +152,13 @@ export async function getChannelVideos(channelId: string, maxResults: number = 5
   }
 }
 
-// Get channel's uploads playlist ID
+// Get channel's uploads playlist ID (uses API manager with key rotation)
 async function getUploadsPlaylistId(channelId: string): Promise<string | null> {
   try {
-    const url = `${YOUTUBE_API_BASE}/channels?part=contentDetails&id=${channelId}&key=${YOUTUBE_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await youtubeApiManager.makeRequest<any>('channels', {
+      part: 'contentDetails',
+      id: channelId,
+    });
 
     if (data.items && data.items.length > 0) {
       return data.items[0].contentDetails.relatedPlaylists.uploads;
@@ -181,21 +189,21 @@ async function getPlaylistVideos(
 
     while (allVideos.length < maxResults) {
       const resultsToFetch = Math.min(videosPerPage, maxResults - allVideos.length);
-      const pageToken: string = nextPageToken ? `&pageToken=${nextPageToken}` : '';
-      
-      const url: string = `${YOUTUBE_API_BASE}/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=${resultsToFetch}${pageToken}&key=${YOUTUBE_API_KEY}`;
       
       console.log(`Fetching page ${Math.floor(allVideos.length / videosPerPage) + 1}, requesting ${resultsToFetch} videos`);
-      const response: Response = await fetch(url);
       
-      if (!response.ok) {
-        console.error(`YouTube API error: ${response.status}`);
-        const errorData = await response.json();
-        console.error('Error details:', errorData);
-        break;
+      // Use API manager with automatic key rotation
+      const params: Record<string, string> = {
+        part: 'snippet',
+        playlistId: playlistId,
+        maxResults: String(resultsToFetch),
+      };
+      
+      if (nextPageToken) {
+        params.pageToken = nextPageToken;
       }
-
-      const data: any = await response.json();
+      
+      const data: any = await youtubeApiManager.makeRequest<any>('playlistItems', params);
       
       if (!data.items || data.items.length === 0) {
         console.log('No more videos available');
@@ -270,12 +278,13 @@ export async function getChannelVideosByDateRange(
   }
 }
 
-// Get video details including description
+// Get video details including description (uses API manager with key rotation)
 export async function getVideoDetails(videoId: string): Promise<any> {
   try {
-    const url = `${YOUTUBE_API_BASE}/videos?part=snippet&id=${videoId}&key=${YOUTUBE_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await youtubeApiManager.makeRequest<any>('videos', {
+      part: 'snippet',
+      id: videoId,
+    });
 
     if (data.items && data.items.length > 0) {
       return data.items[0];
