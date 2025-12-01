@@ -30,6 +30,11 @@ interface ScanProgress {
   results: VideoScanResult[];
 }
 
+// Batch processing configuration
+const BATCH_SIZE = 50; // Process videos in batches of 50
+const MAX_PARALLEL_BATCHES = 100; // Maximum number of batches to process in parallel
+const LINKS_CONCURRENCY = 10; // Number of links to check in parallel within a batch
+
 // Extract links from video description
 function extractLinksFromDescription(description: string): string[] {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -277,6 +282,137 @@ async function getVideoDetails(videoId: string): Promise<any> {
   }
 }
 
+// Check multiple links in parallel with concurrency limit
+async function checkLinksInParallel(links: string[], concurrency: number = LINKS_CONCURRENCY): Promise<VideoLink[]> {
+  const results: VideoLink[] = [];
+  
+  // Process links in chunks
+  for (let i = 0; i < links.length; i += concurrency) {
+    const chunk = links.slice(i, i + concurrency);
+    const chunkResults = await Promise.all(
+      chunk.map(link => checkLinkStatus(link))
+    );
+    results.push(...chunkResults);
+  }
+  
+  return results;
+}
+
+// Process a single batch of videos
+async function processBatch(
+  videos: any[],
+  batchIndex: number,
+  totalBatches: number
+): Promise<VideoScanResult[]> {
+  const batchResults: VideoScanResult[] = [];
+  const startTime = Date.now();
+  
+  console.log(`\n🔄 [Batch ${batchIndex + 1}/${totalBatches}] Processing ${videos.length} videos...`);
+  
+  // Step 1: Get video details and extract links
+  const videoDetailsWithLinks: Array<{
+    videoId: string;
+    videoTitle: string;
+    videoUrl: string;
+    publishedAt: string;
+    links: string[];
+  }> = [];
+  
+  for (const video of videos) {
+    const videoId = video.id.videoId;
+    const videoDetails = await getVideoDetails(videoId);
+    
+    if (!videoDetails) {
+      continue;
+    }
+    
+    const description = videoDetails.snippet.description || '';
+    const links = extractLinksFromDescription(description);
+    
+    if (links.length === 0) {
+      continue;
+    }
+    
+    videoDetailsWithLinks.push({
+      videoId,
+      videoTitle: videoDetails.snippet.title,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      publishedAt: videoDetails.snippet.publishedAt,
+      links: links,
+    });
+  }
+  
+  console.log(`   [Batch ${batchIndex + 1}] Found ${videoDetailsWithLinks.length} videos with links`);
+  
+  // Step 2: Check all links in parallel
+  for (const videoData of videoDetailsWithLinks) {
+    const videoLinks = await checkLinksInParallel(videoData.links);
+    
+    batchResults.push({
+      videoId: videoData.videoId,
+      videoTitle: videoData.videoTitle,
+      videoUrl: videoData.videoUrl,
+      publishedAt: videoData.publishedAt,
+      links: videoLinks,
+    });
+  }
+  
+  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`   ✅ [Batch ${batchIndex + 1}] Completed in ${duration}s - ${batchResults.length} videos processed`);
+  
+  return batchResults;
+}
+
+// Split array into chunks
+function splitIntoBatches<T>(array: T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < array.length; i += batchSize) {
+    batches.push(array.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+// Process all batches with controlled parallelism
+async function processAllBatchesInParallel(
+  videos: any[],
+  maxParallelBatches: number = MAX_PARALLEL_BATCHES
+): Promise<VideoScanResult[]> {
+  const batches = splitIntoBatches(videos, BATCH_SIZE);
+  const totalBatches = batches.length;
+  
+  console.log(`\n========================================`);
+  console.log(`PARALLEL BATCH PROCESSING`);
+  console.log(`========================================`);
+  console.log(`Total videos: ${videos.length}`);
+  console.log(`Batch size: ${BATCH_SIZE}`);
+  console.log(`Number of batches: ${totalBatches}`);
+  console.log(`Max parallel batches: ${maxParallelBatches}`);
+  console.log(`========================================\n`);
+  
+  const allResults: VideoScanResult[] = [];
+  
+  // Process batches in parallel groups
+  for (let i = 0; i < batches.length; i += maxParallelBatches) {
+    const batchGroup = batches.slice(i, i + maxParallelBatches);
+    const startIndex = i;
+    
+    console.log(`\n🚀 Starting parallel group ${Math.floor(i / maxParallelBatches) + 1}/${Math.ceil(batches.length / maxParallelBatches)} (${batchGroup.length} batches)`);
+    
+    const groupResults = await Promise.all(
+      batchGroup.map((batch, idx) => 
+        processBatch(batch, startIndex + idx, totalBatches)
+      )
+    );
+    
+    // Flatten and add results
+    for (const batchResults of groupResults) {
+      allResults.push(...batchResults);
+    }
+  }
+  
+  return allResults;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -334,96 +470,98 @@ export async function POST(request: NextRequest) {
     console.log(`========================================`);
     console.log(`Fetching ${videoCount} videos from channel ${channelId}...`);
     
+    const scanStartTime = Date.now();
     const videos = await fetchChannelVideos(channelId, enforcedCount, startDate, endDate);
     
     console.log(`✓ Successfully collected ${videos.length} videos!`);
-    console.log(`\n========================================`);
-    console.log(`STEP 2: FETCHING VIDEO DETAILS`);
-    console.log(`========================================`);
     
-    // STEP 2: Get details for ALL videos and extract links
-    const videoDetailsWithLinks: Array<{
-      videoId: string;
-      videoTitle: string;
-      videoUrl: string;
-      publishedAt: string;
-      links: string[];
-    }> = [];
+    // STEP 2 & 3: Process videos in parallel batches (if > 100 videos)
+    let scanResults: VideoScanResult[];
     
-    let detailsFetchedCount = 0;
-    
-    for (const video of videos) {
-      const videoId = video.id.videoId;
-      detailsFetchedCount++;
+    if (videos.length > BATCH_SIZE) {
+      // Use parallel batch processing for large scans
+      console.log(`\n⚡ Using PARALLEL BATCH PROCESSING (${videos.length} videos > ${BATCH_SIZE} threshold)`);
+      scanResults = await processAllBatchesInParallel(videos);
+    } else {
+      // Use sequential processing for small scans (more efficient for < 100 videos)
+      console.log(`\n📝 Using sequential processing (${videos.length} videos <= ${BATCH_SIZE} threshold)`);
+      console.log(`\n========================================`);
+      console.log(`STEP 2: FETCHING VIDEO DETAILS`);
+      console.log(`========================================`);
       
-      console.log(`[${detailsFetchedCount}/${videos.length}] Fetching details for video: ${videoId}`);
+      const videoDetailsWithLinks: Array<{
+        videoId: string;
+        videoTitle: string;
+        videoUrl: string;
+        publishedAt: string;
+        links: string[];
+      }> = [];
       
-      const videoDetails = await getVideoDetails(videoId);
+      let detailsFetchedCount = 0;
       
-      if (!videoDetails) {
-        console.log(`  ⚠️ Could not fetch details - skipping`);
-        continue;
-      }
-      
-      const description = videoDetails.snippet.description || '';
-      const links = extractLinksFromDescription(description);
-      
-      if (links.length === 0) {
-        console.log(`  ℹ️ No links found - skipping`);
-        continue;
-      }
-      
-      console.log(`  ✓ Found ${links.length} links`);
-      
-      videoDetailsWithLinks.push({
-        videoId,
-        videoTitle: videoDetails.snippet.title,
-        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        publishedAt: videoDetails.snippet.publishedAt,
-        links: links,
-      });
-    }
-    
-    console.log(`\n✓ Collected ${videoDetailsWithLinks.length} videos with links`);
-    console.log(`✓ Total links to check: ${videoDetailsWithLinks.reduce((sum, v) => sum + v.links.length, 0)}`);
-    
-    // STEP 3: Now check ALL links one by one
-    console.log(`\n========================================`);
-    console.log(`STEP 3: CHECKING ALL LINKS`);
-    console.log(`========================================`);
-    
-    const scanResults: VideoScanResult[] = [];
-    let totalLinksChecked = 0;
-    
-    for (let i = 0; i < videoDetailsWithLinks.length; i++) {
-      const videoData = videoDetailsWithLinks[i];
-      console.log(`\n[Video ${i + 1}/${videoDetailsWithLinks.length}] ${videoData.videoTitle}`);
-      console.log(`  Checking ${videoData.links.length} links...`);
-      
-      const videoLinks: VideoLink[] = [];
-      
-      for (let j = 0; j < videoData.links.length; j++) {
-        const link = videoData.links[j];
-        totalLinksChecked++;
+      for (const video of videos) {
+        const videoId = video.id.videoId;
+        detailsFetchedCount++;
         
-        console.log(`  [Link ${j + 1}/${videoData.links.length}] Checking: ${link}`);
-        const linkStatus = await checkLinkStatus(link);
-        videoLinks.push(linkStatus);
-        console.log(`    → Status: ${linkStatus.status} (${linkStatus.statusCode})`);
+        console.log(`[${detailsFetchedCount}/${videos.length}] Fetching details for video: ${videoId}`);
+        
+        const videoDetails = await getVideoDetails(videoId);
+        
+        if (!videoDetails) {
+          console.log(`  ⚠️ Could not fetch details - skipping`);
+          continue;
+        }
+        
+        const description = videoDetails.snippet.description || '';
+        const links = extractLinksFromDescription(description);
+        
+        if (links.length === 0) {
+          console.log(`  ℹ️ No links found - skipping`);
+          continue;
+        }
+        
+        console.log(`  ✓ Found ${links.length} links`);
+        
+        videoDetailsWithLinks.push({
+          videoId,
+          videoTitle: videoDetails.snippet.title,
+          videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          publishedAt: videoDetails.snippet.publishedAt,
+          links: links,
+        });
       }
       
-      scanResults.push({
-        videoId: videoData.videoId,
-        videoTitle: videoData.videoTitle,
-        videoUrl: videoData.videoUrl,
-        publishedAt: videoData.publishedAt,
-        links: videoLinks,
-      });
+      console.log(`\n✓ Collected ${videoDetailsWithLinks.length} videos with links`);
+      
+      // STEP 3: Check links (with parallel processing for links)
+      console.log(`\n========================================`);
+      console.log(`STEP 3: CHECKING ALL LINKS`);
+      console.log(`========================================`);
+      
+      scanResults = [];
+      
+      for (const videoData of videoDetailsWithLinks) {
+        console.log(`\nChecking ${videoData.links.length} links for: ${videoData.videoTitle}`);
+        
+        // Use parallel link checking even for small batches
+        const videoLinks = await checkLinksInParallel(videoData.links);
+        
+        scanResults.push({
+          videoId: videoData.videoId,
+          videoTitle: videoData.videoTitle,
+          videoUrl: videoData.videoUrl,
+          publishedAt: videoData.publishedAt,
+          links: videoLinks,
+        });
+      }
     }
     
-    console.log(`\n✓ Scan completed!`);
+    const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+    const totalLinksChecked = scanResults.reduce((sum, r) => sum + r.links.length, 0);
+    
+    console.log(`\n✅ Scan completed in ${scanDuration} seconds!`);
     console.log(`  - Videos scanned: ${videos.length}`);
-    console.log(`  - Videos with links: ${videoDetailsWithLinks.length}`);
+    console.log(`  - Videos with links: ${scanResults.length}`);
     console.log(`  - Total links checked: ${totalLinksChecked}`);
 
 
@@ -456,7 +594,7 @@ export async function POST(request: NextRequest) {
       success: true,
       channelId,
       scannedVideos: videos.length,
-      videosWithLinks: videoDetailsWithLinks.length,
+      videosWithLinks: scanResults.length,
       statistics: {
         totalLinks,
         brokenLinks,
@@ -490,7 +628,7 @@ export async function POST(request: NextRequest) {
           lastScan: scannedAt,
           lastScanResults: {
             scannedVideos: videos.length,
-            videosWithLinks: videoDetailsWithLinks.length,
+            videosWithLinks: scanResults.length,
             totalLinks,
             brokenLinks,
             warningLinks,

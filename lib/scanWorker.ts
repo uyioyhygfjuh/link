@@ -18,6 +18,11 @@ interface VideoScanResult {
   links: VideoLink[];
 }
 
+// Batch processing configuration
+const BATCH_SIZE = 50;
+const MAX_PARALLEL_BATCHES = 100;
+const LINKS_CONCURRENCY = 20;
+
 // Extract links from video description
 function extractLinksFromDescription(description: string): string[] {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -237,6 +242,119 @@ async function getVideoDetails(videoId: string): Promise<any> {
   }
 }
 
+// Check multiple links in parallel with concurrency limit
+async function checkLinksInParallel(links: string[]): Promise<VideoLink[]> {
+  const results: VideoLink[] = [];
+  
+  for (let i = 0; i < links.length; i += LINKS_CONCURRENCY) {
+    const chunk = links.slice(i, i + LINKS_CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(link => checkLinkStatus(link))
+    );
+    results.push(...chunkResults);
+  }
+  
+  return results;
+}
+
+// Process a single batch of videos
+async function processBatch(
+  videos: any[],
+  batchIndex: number,
+  totalBatches: number
+): Promise<VideoScanResult[]> {
+  const batchResults: VideoScanResult[] = [];
+  
+  console.log(`  🔄 [Batch ${batchIndex + 1}/${totalBatches}] Processing ${videos.length} videos...`);
+  
+  // Get video details and extract links
+  const videoDetailsWithLinks: Array<{
+    videoId: string;
+    videoTitle: string;
+    videoUrl: string;
+    publishedAt: string;
+    links: string[];
+  }> = [];
+  
+  for (const video of videos) {
+    const videoId = video.id.videoId;
+    const videoDetails = await getVideoDetails(videoId);
+    
+    if (!videoDetails) continue;
+    
+    const description = videoDetails.snippet.description || '';
+    const links = extractLinksFromDescription(description);
+    
+    if (links.length === 0) continue;
+    
+    videoDetailsWithLinks.push({
+      videoId,
+      videoTitle: videoDetails.snippet.title,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      publishedAt: videoDetails.snippet.publishedAt,
+      links: links,
+    });
+  }
+  
+  // Check all links in parallel
+  for (const videoData of videoDetailsWithLinks) {
+    const videoLinks = await checkLinksInParallel(videoData.links);
+    
+    batchResults.push({
+      videoId: videoData.videoId,
+      videoTitle: videoData.videoTitle,
+      videoUrl: videoData.videoUrl,
+      publishedAt: videoData.publishedAt,
+      links: videoLinks,
+    });
+  }
+  
+  console.log(`  ✅ [Batch ${batchIndex + 1}] Done - ${batchResults.length} videos with links`);
+  
+  return batchResults;
+}
+
+// Split array into batches
+function splitIntoBatches<T>(array: T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < array.length; i += batchSize) {
+    batches.push(array.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+// Process all batches in parallel
+async function processAllBatchesInParallel(videos: any[]): Promise<VideoScanResult[]> {
+  const batches = splitIntoBatches(videos, BATCH_SIZE);
+  const totalBatches = batches.length;
+  
+  console.log(`\n⚡ PARALLEL BATCH PROCESSING`);
+  console.log(`  Total videos: ${videos.length}`);
+  console.log(`  Batches: ${totalBatches} (${BATCH_SIZE} per batch)`);
+  console.log(`  Max parallel: ${MAX_PARALLEL_BATCHES}\n`);
+  
+  const allResults: VideoScanResult[] = [];
+  
+  for (let i = 0; i < batches.length; i += MAX_PARALLEL_BATCHES) {
+    const batchGroup = batches.slice(i, i + MAX_PARALLEL_BATCHES);
+    const startIndex = i;
+    
+    console.log(`\n🚀 Processing batch group ${Math.floor(i / MAX_PARALLEL_BATCHES) + 1}/${Math.ceil(batches.length / MAX_PARALLEL_BATCHES)}`);
+    
+    const groupResults = await Promise.all(
+      batchGroup.map((batch, idx) => 
+        processBatch(batch, startIndex + idx, totalBatches)
+      )
+    );
+    
+    for (const batchResults of groupResults) {
+      allResults.push(...batchResults);
+    }
+  }
+  
+  return allResults;
+}
+
 // Process scan job
 scanQueue.process(async (job: Job<ScanJobData>) => {
   const { jobId, userId, channelId, channelName, firestoreDocId, videoCount, startDate, endDate, scanMode } = job.data;
@@ -259,83 +377,98 @@ scanQueue.process(async (job: Job<ScanJobData>) => {
     console.log(`STEP 1: COLLECTING ${videoCount} VIDEOS`);
     console.log(`========================================`);
     
+    const scanStartTime = Date.now();
     const videos = await fetchChannelVideos(channelId, videoCount, startDate, endDate);
     console.log(`✓ Collected ${videos.length} videos`);
     
     await job.progress(10);
 
-    // STEP 2: Get video details
-    console.log(`\n========================================`);
-    console.log(`STEP 2: FETCHING VIDEO DETAILS`);
-    console.log(`========================================`);
+    // STEP 2 & 3: Process videos (parallel for large scans, sequential for small)
+    let scanResults: VideoScanResult[];
     
-    const videoDetailsWithLinks: Array<{
-      videoId: string;
-      videoTitle: string;
-      videoUrl: string;
-      publishedAt: string;
-      links: string[];
-    }> = [];
-    
-    for (let i = 0; i < videos.length; i++) {
-      const video = videos[i];
-      const videoId = video.id.videoId;
+    if (videos.length > BATCH_SIZE) {
+      // Use parallel batch processing for large scans
+      console.log(`\n⚡ Using PARALLEL BATCH PROCESSING (${videos.length} videos > ${BATCH_SIZE} threshold)`);
+      await job.progress(15);
       
-      const videoDetails = await getVideoDetails(videoId);
+      scanResults = await processAllBatchesInParallel(videos);
       
-      if (!videoDetails) continue;
+      await job.progress(85);
+    } else {
+      // Sequential processing for small scans
+      console.log(`\n📝 Using sequential processing (${videos.length} videos <= ${BATCH_SIZE} threshold)`);
+      console.log(`\n========================================`);
+      console.log(`STEP 2: FETCHING VIDEO DETAILS`);
+      console.log(`========================================`);
       
-      const description = videoDetails.snippet.description || '';
-      const links = extractLinksFromDescription(description);
+      const videoDetailsWithLinks: Array<{
+        videoId: string;
+        videoTitle: string;
+        videoUrl: string;
+        publishedAt: string;
+        links: string[];
+      }> = [];
       
-      if (links.length === 0) continue;
-      
-      videoDetailsWithLinks.push({
-        videoId,
-        videoTitle: videoDetails.snippet.title,
-        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        publishedAt: videoDetails.snippet.publishedAt,
-        links: links,
-      });
-      
-      // Update progress (10% to 40%)
-      const progress = 10 + Math.floor((i / videos.length) * 30);
-      await job.progress(progress);
-    }
-    
-    console.log(`✓ Found ${videoDetailsWithLinks.length} videos with links`);
-    await job.progress(40);
-
-    // STEP 3: Check links
-    console.log(`\n========================================`);
-    console.log(`STEP 3: CHECKING ALL LINKS`);
-    console.log(`========================================`);
-    
-    const scanResults: VideoScanResult[] = [];
-    const totalLinks = videoDetailsWithLinks.reduce((sum, v) => sum + v.links.length, 0);
-    let checkedLinks = 0;
-    
-    for (const videoData of videoDetailsWithLinks) {
-      const videoLinks: VideoLink[] = [];
-      
-      for (const link of videoData.links) {
-        const linkStatus = await checkLinkStatus(link);
-        videoLinks.push(linkStatus);
-        checkedLinks++;
+      for (let i = 0; i < videos.length; i++) {
+        const video = videos[i];
+        const videoId = video.id.videoId;
         
-        // Update progress (40% to 90%)
-        const progress = 40 + Math.floor((checkedLinks / totalLinks) * 50);
+        const videoDetails = await getVideoDetails(videoId);
+        
+        if (!videoDetails) continue;
+        
+        const description = videoDetails.snippet.description || '';
+        const links = extractLinksFromDescription(description);
+        
+        if (links.length === 0) continue;
+        
+        videoDetailsWithLinks.push({
+          videoId,
+          videoTitle: videoDetails.snippet.title,
+          videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          publishedAt: videoDetails.snippet.publishedAt,
+          links: links,
+        });
+        
+        // Update progress (10% to 40%)
+        const progress = 10 + Math.floor((i / videos.length) * 30);
         await job.progress(progress);
       }
       
-      scanResults.push({
-        videoId: videoData.videoId,
-        videoTitle: videoData.videoTitle,
-        videoUrl: videoData.videoUrl,
-        publishedAt: videoData.publishedAt,
-        links: videoLinks,
-      });
+      console.log(`✓ Found ${videoDetailsWithLinks.length} videos with links`);
+      await job.progress(40);
+
+      // STEP 3: Check links (with parallel processing for links)
+      console.log(`\n========================================`);
+      console.log(`STEP 3: CHECKING ALL LINKS`);
+      console.log(`========================================`);
+      
+      scanResults = [];
+      
+      for (let i = 0; i < videoDetailsWithLinks.length; i++) {
+        const videoData = videoDetailsWithLinks[i];
+        
+        // Use parallel link checking
+        const videoLinks = await checkLinksInParallel(videoData.links);
+        
+        scanResults.push({
+          videoId: videoData.videoId,
+          videoTitle: videoData.videoTitle,
+          videoUrl: videoData.videoUrl,
+          publishedAt: videoData.publishedAt,
+          links: videoLinks,
+        });
+        
+        // Update progress (40% to 85%)
+        const progress = 40 + Math.floor(((i + 1) / videoDetailsWithLinks.length) * 45);
+        await job.progress(progress);
+      }
     }
+    
+    const scanDuration = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+    console.log(`\n✅ Scan completed in ${scanDuration} seconds!`);
+    console.log(`  - Videos scanned: ${videos.length}`);
+    console.log(`  - Videos with links: ${scanResults.length}`);
 
     // Calculate statistics
     let totalLinksCount = 0;
@@ -352,16 +485,14 @@ scanQueue.process(async (job: Job<ScanJobData>) => {
       });
     });
 
-    console.log(`\n✓ Scan completed!`);
-    console.log(`  - Videos scanned: ${videos.length}`);
-    console.log(`  - Videos with links: ${videoDetailsWithLinks.length}`);
+    console.log(`\n✓ Final statistics:`);
     console.log(`  - Total links checked: ${totalLinksCount}`);
     console.log(`  - Broken: ${brokenLinks}, Warning: ${warningLinks}, Working: ${workingLinks}`);
 
     const result: ScanJobResult = {
       success: true,
       scannedVideos: videos.length,
-      videosWithLinks: videoDetailsWithLinks.length,
+      videosWithLinks: scanResults.length,
       statistics: {
         totalLinks: totalLinksCount,
         brokenLinks,
@@ -382,7 +513,7 @@ scanQueue.process(async (job: Job<ScanJobData>) => {
       lastScan: new Date().toISOString(),
       lastScanResults: {
         scannedVideos: videos.length,
-        videosWithLinks: videoDetailsWithLinks.length,
+        videosWithLinks: scanResults.length,
         totalLinks: totalLinksCount,
         brokenLinks,
         warningLinks,
