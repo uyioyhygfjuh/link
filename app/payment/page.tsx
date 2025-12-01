@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
@@ -7,7 +7,7 @@ import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'fire
 import Header from '@/components/Header';
 import { Shield, ArrowRight, CreditCard } from 'lucide-react';
 
-export default function PaymentPage() {
+function PaymentContent() {
   const router = useRouter();
   const params = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
@@ -207,5 +207,20 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-primary-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-gray-600">Loading payment…</p>
+        </div>
+      </div>
+    }>
+      <PaymentContent />
+    </Suspense>
   );
 }
