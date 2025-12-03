@@ -1,15 +1,15 @@
 {
   "functions": {
     "app/api/scan-channel/route.ts": {
-      "maxDuration": 800,
+      "maxDuration": 300,
       "memory": 682
     },
     "app/api/noob/auto-scan/route.ts": {
-      "maxDuration": 800,
+      "maxDuration": 300,
       "memory": 682
     },
     "app/api/get-scan-results/route.ts": {
-      "maxDuration": 800,
+      "maxDuration": 300,
       "memory": 682
     }
   },
